@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1790409685178,
+      "tag": "0000_wooden_sister_grimm",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790410519511,
+      "tag": "0001_absurd_timeslip",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790412870890,
+      "tag": "0002_gifted_madrox",
+      "breakpoints": true
+    }
+  ]
+}
