@@ -46,3 +46,8 @@ next-env.d.ts
 /work/
 
 /public/app-version.json
+
+/public/pdf.worker.min.mjs
+
+/public/pdf-fonts/
+/public/pdf-cmaps/
