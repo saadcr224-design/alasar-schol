@@ -1,0 +1,21 @@
+export const importFields=['name','roll','className','guardian','phone','fee','discount','familyId'] as const;
+export type ImportField=typeof importFields[number];
+export type ImportRow=Record<ImportField,string>;
+export const importLabels:Record<ImportField,string>={name:'Student name',roll:'Admission no.',className:'Class',guardian:'Guardian / father',phone:'Phone',fee:'Monthly tuition',discount:'Discount',familyId:'Family ID'};
+export const blankImportRow=():ImportRow=>({name:'',roll:'',className:'',guardian:'',phone:'',fee:'',discount:'0',familyId:''});
+export type PdfCell={text:string;x:number};
+export type PdfLine={cells:PdfCell[];page:number};
+const normal=(s:string)=>s.toLowerCase().replace(/[^a-z0-9]/g,'');
+export function headerField(s:string):ImportField|''{const n=normal(s);const aliases:Record<ImportField,string[]>={name:['name','student','studentname','studentfullname','fullname'],roll:['admissionno','admissionnumber','admission','admno','roll','rollno','rollnumber','studentid','registrationno'],className:['class','classname','grade'],guardian:['guardian','guardianname','father','fathername','fathersname','parent','parentname','guardianfather','parentguardian'],phone:['phone','phoneno','phonenumber','contact','contactno','mobile','mobileno'],fee:['fee','monthlyfee','monthlytuition','tuition','tuitionfee','monthlytuitionfee'],discount:['discount','feediscount'],familyId:['family','familyid','siblingid']};return importFields.find(k=>aliases[k].includes(n))||'';}
+export function pdfLines(items:any[],page:number):PdfLine[]{const rows:{y:number;items:any[]}[]=[];for(const item of items){if(!('str' in item)||!item.str.trim())continue;const y=item.transform[5];let row=rows.find(r=>Math.abs(r.y-y)<3);if(!row){row={y,items:[]};rows.push(row)}row.items.push(item)}return rows.sort((a,b)=>b.y-a.y).map(row=>{const cells:PdfCell[]=[];let end=-Infinity;for(const item of row.items.sort((a,b)=>a.transform[4]-b.transform[4])){const x=item.transform[4],t=item.str.trim();if(cells.length&&x-end<12){cells[cells.length-1].text+=' '+t}else cells.push({text:t,x});end=x+item.width}return {cells,page}});}
+export function parsePdfLines(lines:PdfLine[]):{headers:string[];mapping:(ImportField|'')[];rows:string[][];kind:'table'|'labels'|'unmapped'}{
+ const headIndex=lines.findIndex(l=>l.cells.filter(c=>headerField(c.text)).length>=2&&l.cells.some(c=>headerField(c.text)==='name'));
+ if(headIndex>=0){let heads=lines[headIndex].cells;const headers=heads.map(c=>c.text),mapping=headers.map(headerField);const rows:string[][]=[];for(const line of lines.slice(headIndex+1)){if(line.cells.filter(c=>headerField(c.text)).length>=2&&line.cells.some(c=>headerField(c.text)==='name')){heads=line.cells;continue}const values=Array(headers.length).fill('');for(const cell of line.cells){let col=0;for(let n=0;n<heads.length;n++)if(cell.x>=heads[n].x-6)col=n;if(col<values.length)values[col]+=(values[col]?' ':'')+cell.text}if(values.filter(Boolean).length>=2)rows.push(values)}return {headers,mapping,rows,kind:'table'};}
+ const records:ImportRow[]=[];let row=blankImportRow(),count=0;
+ const flush=()=>{if(row.name&&count>=2)records.push(row);row=blankImportRow();count=0};
+ for(const line of lines){for(let i=0;i<line.cells.length;i++){const t=line.cells[i].text;const colon=t.match(/^([^:]{1,35})\s*:\s*(.*)$/);const field=headerField(colon?colon[1]:t);if(!field)continue;let value=colon?.[2]||'';if(!value&&line.cells[i+1]&&!headerField(line.cells[i+1].text)){value=line.cells[++i].text}if(!value)continue;if(field==='name'&&row.name)flush();row[field]=value;count++;}}flush();
+ if(records.length)return {headers:importFields.map(k=>importLabels[k]),mapping:[...importFields],rows:records.map(r=>importFields.map(k=>r[k])),kind:'labels'};
+ const raw=lines.filter(l=>l.cells.length>=2).map(l=>l.cells.map(c=>c.text));const width=Math.min(12,Math.max(0,...raw.map(r=>r.length)));return {headers:Array.from({length:width},(_,i)=>'Column '+(i+1)),mapping:Array(width).fill(''),rows:raw.map(r=>r.slice(0,width)),kind:'unmapped'};
+}
+export function mappedRow(values:string[],mapping:(ImportField|'')[]):ImportRow{const r=blankImportRow();mapping.forEach((k,i)=>{if(k)r[k]=(values[i]||'').trim()});return r;}
+export function cleanAmount(value:string){return value.replace(/(?:PKR|Rs\.?)/gi,'').replace(/,/g,'').trim();}
