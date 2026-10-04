@@ -7,8 +7,9 @@ export const metadata: Metadata = {
   description: "Manage school fees, student accounts, receipts and reports.",
   manifest: "/manifest.webmanifest",
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: "/alasar-favicon.png",
+    shortcut: "/alasar-favicon.png",
+    apple: "/alasar-apple-icon.png",
   },
 };
 
