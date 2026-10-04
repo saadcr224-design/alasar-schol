@@ -3,7 +3,7 @@ export type Invoice={id:string;studentId:string;month:string;due:string;amount:n
 export type Payment={id:string;invoiceId:string;amount:number;date:string;method:string;reference:string;voided?:boolean;groupId?:string;periodFrom?:string;periodTo?:string;familyId?:string;familyStudentIds?:string[]};
 export type Expense={id:string;title:string;category:string;amount:number;date:string};
 export type TuitionPlan={id:string;studentId:string;month:string;fee:number;discount:number};
-export type Ledger={deletedExpenses?:{expense:Expense;deletedAt:string}[];deletedPayments?:{payments:Payment[];deletedAt:string}[];deletedFees?:{invoice:Invoice;deletedAt:string}[];deletedReminderIds?:string[];tuitionPlans?:TuitionPlan[];students:Student[];invoices:Invoice[];payments:Payment[];expenses:Expense[];reminders:{id:string;invoiceId:string;date:string;note:string}[];audit:{id:string;date:string;action:string}[];settings:{school:string;address:string;phone:string;session:string;logoVersion?:string}};
+export type Ledger={sessions?:{id:string;name:string}[];sessionRecords?:Record<string,Ledger>;deletedExpenses?:{expense:Expense;deletedAt:string}[];deletedPayments?:{payments:Payment[];deletedAt:string}[];deletedFees?:{invoice:Invoice;deletedAt:string}[];deletedReminderIds?:string[];tuitionPlans?:TuitionPlan[];students:Student[];invoices:Invoice[];payments:Payment[];expenses:Expense[];reminders:{id:string;invoiceId:string;date:string;note:string}[];audit:{id:string;date:string;action:string}[];settings:{school:string;address:string;phone:string;session:string;logoVersion?:string}};
 export const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Karachi',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 export const emptyLedger=():Ledger=>({students:[],invoices:[],payments:[],expenses:[],reminders:[],audit:[],settings:{school:'My School',address:'',phone:'',session:'2026–2027'}});
 export const paid=(s:Ledger,id:string)=>s.payments.filter(p=>p.invoiceId===id&&!p.voided).reduce((a,p)=>a+p.amount,0);
@@ -12,7 +12,7 @@ export const status=(s:Ledger,i:Invoice)=>balance(s,i)<=0?'Paid':paid(s,i.id)>0?
 const text=(v:any,max=160)=>{if(typeof v!=='string'||!v.trim()||v.length>max)throw Error('Please complete all required fields.');return v.trim()};
 const money=(v:any,zero=false)=>{const n=Number(v);if(!Number.isSafeInteger(n)||n<(zero?0:1)||n>1000000000)throw Error('Enter a valid amount in whole rupees.');return n};
 const date=(v:any)=>{if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(v)||isNaN(Date.parse(v))||new Date(v).toISOString().slice(0,10)!==v)throw Error('Choose a valid date.');return v};
-export function mutate(source:Ledger,action:string,p:any):Ledger{
+function mutateRecords(source:Ledger,action:string,p:any):Ledger{
  const s=structuredClone(source),id=crypto.randomUUID();let description='';
  if(action==='student') {const st:Student={id:p.id||id,name:text(p.name),roll:text(p.roll,40),className:text(p.className,40),guardian:text(p.guardian),phone:String(p.phone||'').slice(0,40),fee:money(p.fee,true),discount:money(p.discount||0,true),active:p.active!==false,familyId:String(p.familyId||'').trim().slice(0,80)};if(st.discount>st.fee)throw Error('Discount cannot exceed the monthly fee.');if(s.students.some(x=>x.roll===st.roll&&x.id!==st.id))throw Error('This admission number is already used.');if(p.id&&s.students.find(x=>x.id===p.id)?.deletedAt)throw Error('Restore this student before editing.');if(p.id&&!s.students.some(x=>x.id===p.id))throw Error('Student not found.');s.students=p.id?s.students.map(x=>x.id===p.id?st:x):[...s.students,st];description=`${p.id?'Updated':'Added'} student ${st.name}`;}
  else if(action==='import_students'){
@@ -61,3 +61,39 @@ export function reminderInvoices(s:Ledger,throughMonth:string,includeDeleted=fal
 
 // Archived invoices remain available for historical receipts and cash reports only.
 export const invoiceHistory=(s:Ledger):Invoice[]=>[...s.invoices,...(s.deletedFees||[]).map(x=>x.invoice)];
+
+// The legacy ledger is the first session. Other sessions are separate records in
+// the same revision-controlled document so transfers commit atomically.
+export const schoolSessions=(s:Ledger)=>s.sessions||[{id:'legacy',name:s.settings.session}];
+export function sessionLedger(s:Ledger,id='legacy'):Ledger {
+ const entry=schoolSessions(s).find(x=>x.id===id);if(!entry)throw Error('Session not found. Refresh your records.');
+ const record=id==='legacy'?s:s.sessionRecords?.[id];if(!record)throw Error('Session records unavailable.');
+ const {sessions,sessionRecords,...data}=record;return {...data,settings:{...s.settings,session:entry.name}};
+}
+export function mutate(source:Ledger,action:string,p:any):Ledger {
+ const root=structuredClone(source);root.sessions=schoolSessions(root);root.sessionRecords ||= {};
+ const selected=p.sessionId||'legacy';let current=sessionLedger(root,selected);
+ const put=(id:string,data:Ledger)=>{if(id==='legacy'){const {sessions,sessionRecords}=root;Object.assign(root,data);root.sessions=sessions;root.sessionRecords=sessionRecords;}else root.sessionRecords![id]=data;};
+ const audit=(s:Ledger,message:string)=>s.audit.unshift({id:crypto.randomUUID(),date:new Date().toISOString(),action:message});
+ if(action==='create_session') {
+  const name=text(p.name,40);if(root.sessions.some(x=>x.name.toLowerCase()===name.toLowerCase()))throw Error('A session with this name already exists.');
+  const id=crypto.randomUUID();root.sessions.push({id,name});root.sessionRecords[id]={...emptyLedger(),settings:{...root.settings,session:name}};
+  audit(current,'Created session '+name);put(selected,current);return root;
+ }
+ if(action==='transfer_student') {
+  const targetId=text(p.targetSessionId,80);if(targetId===selected)throw Error('Choose a different session.');
+  const target=sessionLedger(root,targetId),student=current.students.find(x=>x.id===p.id&&!x.deletedAt);if(!student)throw Error('Current student not found.');
+  if(target.students.some(x=>x.id===student.id||x.roll.toLowerCase()===student.roll.toLowerCase()))throw Error('This student or admission number already exists in the destination session.');
+  const ids=new Set([...current.invoices,...(current.deletedFees||[]).map(x=>x.invoice)].filter(i=>i.studentId===student.id).map(i=>i.id));
+  const move=(key:string,test:(x:any)=>boolean)=>{const a=(current as any)[key]||[];(target as any)[key]=[...((target as any)[key]||[]),...a.filter(test)];(current as any)[key]=a.filter((x:any)=>!test(x));};
+  move('students',x=>x.id===student.id);move('invoices',x=>ids.has(x.id));move('deletedFees',x=>ids.has(x.invoice.id));move('payments',x=>ids.has(x.invoiceId));move('tuitionPlans',x=>x.studentId===student.id);move('reminders',x=>ids.has(x.invoiceId));move('deletedReminderIds',x=>ids.has(x));
+  const archived=current.deletedPayments||[];target.deletedPayments=[...(target.deletedPayments||[]),...archived.map(x=>({...x,payments:x.payments.filter(p=>ids.has(p.invoiceId))})).filter(x=>x.payments.length)];current.deletedPayments=archived.map(x=>({...x,payments:x.payments.filter(p=>!ids.has(p.invoiceId))})).filter(x=>x.payments.length);
+  // A family receipt spanning sessions contains only that session's allocations.
+  for(const ledger of [current,target])for(const payment of [...ledger.payments,...(ledger.deletedPayments||[]).flatMap(x=>x.payments)])if(payment.familyStudentIds)payment.familyStudentIds=payment.familyStudentIds.filter(id=>ledger.students.some(st=>st.id===id));
+  audit(current,'Moved '+student.name+' to session '+target.settings.session);audit(target,'Moved '+student.name+' from session '+current.settings.session+' with fee and payment history');
+  put(selected,current);put(targetId,target);return root;
+ }
+ current=mutateRecords(current,action,p);put(selected,current);
+ if(action==='settings'){root.settings={...current.settings,session:root.sessions.find(x=>x.id==='legacy')!.name};}
+ return root;
+}
