@@ -27,7 +27,7 @@ function mutateRecords(source:Ledger,action:string,p:any):Ledger{
  else if(action==='delete_fee'){const invoice=s.invoices.find(i=>i.id===p.invoiceId);if(!invoice)throw Error('Fee not found or already deleted.');s.deletedFees=[...(s.deletedFees||[]),{invoice,deletedAt:new Date().toISOString()}];s.invoices=s.invoices.filter(i=>i.id!==invoice.id);s.deletedReminderIds=(s.deletedReminderIds||[]).filter(id=>id!==invoice.id);description=`Deleted fee ${invoice.label} for ${s.students.find(st=>st.id===invoice.studentId)?.name||'student'} (${invoice.month}), Rs ${invoice.amount}; remaining balance cancelled, receipts preserved`;}
  else if(action==='delete_reminder'||action==='restore_reminder'){const invoice=s.invoices.find(i=>i.id===p.invoiceId);if(!invoice)throw Error('Fee reminder not found.');const ids=new Set(s.deletedReminderIds||[]);if(action==='delete_reminder')ids.add(invoice.id);else ids.delete(invoice.id);s.deletedReminderIds=[...ids];description=`${action==='delete_reminder'?'Deleted':'Restored'} reminder for ${s.students.find(st=>st.id===invoice.studentId)?.name||'student'} (${invoice.month}); unpaid balance unchanged`;}
  else if(action==='generate'){
- const months=monthRange(p.month,p.endMonth||p.month),due=date(p.due),selected=selectStudents(s,p).filter(x=>x.active);let count=0;
+ const months=monthRange(p.month,p.endMonth||p.month),due=date(p.due),selected=selectStudents(s,p).filter(x=>x.active&&!x.deletedAt);let count=0;
  selected.forEach(x=>months.forEach(month=>{if(!s.invoices.some(i=>i.studentId===x.id&&i.month===month&&i.label==='Monthly tuition')){const plan=tuitionFor(s,x,month);const day=Math.min(Number(due.slice(8)),new Date(Number(month.slice(0,4)),Number(month.slice(5)),0).getDate());s.invoices.push({id:crypto.randomUUID(),studentId:x.id,month,due:month+'-'+String(day).padStart(2,'0'),amount:plan.fee-plan.discount,label:'Monthly tuition'});count++}}));
  if(!count)throw Error('No new fees to generate. Existing invoices can be printed from Fee challans.');description=`Generated ${count} tuition invoices for ${months.join(', ')}`;
  }
@@ -36,7 +36,7 @@ function mutateRecords(source:Ledger,action:string,p:any):Ledger{
  if(p.applyExisting){const invoice=s.invoices.find(i=>i.studentId===st.id&&i.month===p.month&&i.label==='Monthly tuition');if(invoice){if(fee-discount<paid(s,invoice.id))throw Error('New tuition is less than payments already received. Reverse the affected receipt first.');invoice.amount=fee-discount;}}
  s.tuitionPlans=[...(s.tuitionPlans||[]).filter(x=>!(x.studentId===st.id&&x.month===p.month)),{id,studentId:st.id,month:p.month,fee,discount}];description=`Set tuition for ${st.name} from ${p.month}: Rs ${fee-discount}`;
  }
- else if(action==='invoice'){if(!s.students.some(x=>x.id===p.studentId&&!x.deletedAt))throw Error('Choose a current student.');const due=date(p.due);s.invoices.push({id,studentId:p.studentId,month:due.slice(0,7),due,amount:money(p.amount),label:text(p.label)});description='Added fee charge';}
+ else if(action==='invoice'){if(!s.students.some(x=>x.id===p.studentId&&!x.deletedAt))throw Error('Choose a current student.');const due=date(p.due),month=p.month||due.slice(0,7);monthRange(month,month);s.invoices.push({id,studentId:p.studentId,month,due,amount:money(p.amount),label:text(p.label)});description='Added fee charge';}
  else if(action==='payment_range'||action==='payment_family'){
  const familyId=action==='payment_family'?text(p.familyId,80):'',members=familyId?s.students.filter(st=>st.familyId===familyId):[],st=s.students.find(x=>x.id===p.studentId);if(familyId&&!members.length)throw Error('Choose a sibling family.');if(!familyId&&!st)throw Error('Choose a student.');const amount=money(p.amount),when=date(p.date);if(!['Cash','Bank transfer','Easypaisa','JazzCash','Cheque'].includes(p.method))throw Error('Select a payment method.');const eligible=paymentInvoices(s,{...p,familyId,includeArrears:true}),outstanding=eligible.reduce((a,i)=>a+balance(s,i),0);if(!eligible.length)throw Error('No unpaid fees in this period. Generate the fee months first.');if(amount>outstanding)throw Error('Payment exceeds the outstanding balance for this period.');let remaining=amount;for(const invoice of eligible){if(!remaining)break;const allocated=Math.min(remaining,balance(s,invoice));s.payments.push({id:crypto.randomUUID(),groupId:id,invoiceId:invoice.id,amount:allocated,date:when,method:p.method,reference:String(p.reference||'').slice(0,160),periodFrom:p.fromMonth,periodTo:p.toMonth,...(familyId?{familyId,familyStudentIds:members.map(st=>st.id)}:{})});remaining-=allocated;}description=`Received Rs ${amount} from ${familyId?'family '+familyId:st!.name} for ${p.fromMonth} to ${p.toMonth}; Rs ${outstanding-amount} remains due`;
  }
@@ -96,4 +96,29 @@ export function mutate(source:Ledger,action:string,p:any):Ledger {
  current=mutateRecords(current,action,p);put(selected,current);
  if(action==='settings'){root.settings={...current.settings,session:root.sessions.find(x=>x.id==='legacy')!.name};}
  return root;
+}
+
+// Pending dues include every unpaid charge through the selected fee month,
+// regardless of due date or whether its reminder was hidden.
+export function pendingInvoices(s:Ledger,throughMonth:string):Invoice[]{
+ monthRange(throughMonth,throughMonth);
+ return s.invoices.filter(i=>i.month<=throughMonth&&balance(s,i)>0)
+  .sort((a,b)=>a.month.localeCompare(b.month)||a.due.localeCompare(b.due)||a.id.localeCompare(b.id));
+}
+export function studentMonthlyRecords(s:Ledger,studentId:string,throughMonth=today().slice(0,7)){
+ monthRange(throughMonth,throughMonth);
+ const invoices=s.invoices.filter(i=>i.studentId===studentId);
+ const months=[...new Set([...invoiceHistory(s).filter(i=>i.studentId===studentId).map(i=>i.month),throughMonth])].sort();
+ const byMonth=new Map<string,Invoice[]>();
+ for(const invoice of invoices)byMonth.set(invoice.month,[...(byMonth.get(invoice.month)||[]),invoice]);
+ const payments=new Map<string,number>();
+ for(const payment of s.payments)if(!payment.voided)payments.set(payment.invoiceId,(payments.get(payment.invoiceId)||0)+payment.amount);
+ const rows=[];let month=months[0],opening=0;
+ while(month<=months[months.length-1]){
+  const issued=byMonth.get(month)||[],billed=issued.reduce((n,i)=>n+i.amount,0),received=issued.reduce((n,i)=>n+(payments.get(i.id)||0),0),due=billed-received;
+  rows.push({month,billed,paid:received,due,opening,totalDue:opening+due,issued:issued.length,status:!issued.length?'Not issued':due<=0?'Paid':received>0?'Partial':'Pending'});
+  opening+=due;
+  const year=Number(month.slice(0,4)),m=Number(month.slice(5));month=m===12?String(year+1).padStart(4,'0')+'-01':String(year).padStart(4,'0')+'-'+String(m+1).padStart(2,'0');
+ }
+ return rows.reverse();
 }
