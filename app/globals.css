@@ -31,3 +31,55 @@
 .pdf-import-dialog{max-width:1200px!important;max-height:94dvh;overflow-y:auto}.pdf-import-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.pdf-upload{display:flex;align-items:center;flex-wrap:wrap;gap:14px;padding:22px;border:2px dashed #a9c9c0;border-radius:10px;background:#f1f9f6;font-size:16px}.pdf-upload input{max-width:100%}.pdf-import-dialog summary{cursor:pointer;font-size:14px;font-weight:600;padding:12px 0}.pdf-mapping p{font-size:14px;color:#617594;margin-bottom:14px}.pdf-mapping button.secondary{margin-top:14px}.pdf-source{white-space:pre-wrap;font-size:13px;max-height:230px;overflow:auto;background:#f3f6fa;padding:16px}.pdf-review{max-height:420px;overflow:auto;border:1px solid #dce5f0;border-radius:9px}.pdf-review table{min-width:1450px}.pdf-review th{position:sticky;top:0;background:#f3f6fa;z-index:1}.pdf-review input{width:140px;padding:8px;font-size:14px}.pdf-review td:last-child{min-width:220px;white-space:normal}.pdf-row-error{color:#a22a35!important;font-size:13px}.pdf-confirm{display:flex;align-items:center;gap:12px;font-size:14px}.pdf-import-dialog .row-actions{flex-wrap:wrap}.pdf-import-dialog .muted{font-size:14px;line-height:1.7}@media(max-width:750px){.pdf-import-options{grid-template-columns:1fr}.pdf-import-dialog{padding:18px!important}.pdf-upload{padding:16px}}
 
 .multi-sibling-editor{max-width:850px!important;max-height:92dvh;overflow-y:auto}.sibling-draft{border:1px solid #dce5f0;border-radius:10px;padding:18px;margin:8px 0}.sibling-draft legend{font-size:16px;font-weight:600;padding:0 8px}.sibling-draft .text-button{margin-top:12px}
+
+/* Monthly fee selection and review */
+.generation-dialog{max-width:1100px!important;width:calc(100% - 2rem)!important}
+.field select{width:100%;border:1px solid #dde3ed;border-radius:7px;padding:11px 12px;background:white;font-size:14px;font-weight:400}
+.challan-setup>.form-grid{max-width:800px;margin:20px 0}
+.fee-options{border:1px solid #dce4ef;border-radius:8px;padding:16px;margin:16px 0;min-width:0}
+.fee-options legend{font-size:14px;font-weight:600;padding:0 6px}
+.fee-options p,.fee-generation-review>p{font-size:13px;color:#617594;line-height:1.7;margin-bottom:12px}
+.fee-options>div{display:flex;flex-wrap:wrap;gap:14px;margin:14px 0}
+.fee-options label{display:flex;gap:8px;align-items:center;font-size:13px}
+.fee-options input{width:16px;height:16px}
+.fee-generation-review{min-width:0;margin:18px 0}
+.fee-generation-review h3{margin-bottom:8px}
+.fee-generation-review summary{cursor:pointer;font-size:14px;font-weight:600;margin:16px 0}
+.fee-generation-review .form-note{margin-top:16px}
+.fee-generation-review th,.fee-generation-review td{padding:10px 12px!important}
+.fee-slip-table th,.fee-slip-table td{padding:8px 5px!important;font-size:11px!important;white-space:normal!important;overflow-wrap:anywhere}
+.fee-slip-table{width:100%;table-layout:fixed}
+.fee-slip-table th:first-child{width:14%}
+.slip-totals{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:18px;font-size:12px}
+.slip-totals b{display:block;margin-top:5px;font-size:15px}
+.slip-arrears{font-size:12px;line-height:1.7;margin-top:12px;overflow-wrap:anywhere}
+@media print{
+ @page{size:A4 portrait;margin:10mm}
+ html,body{width:auto!important;height:auto!important;min-height:0!important;overflow:visible!important;margin:0!important;padding:0!important}
+ /* Tailwind v4 uses individual translate, which transform:none does not reset. */
+ [data-slot=dialog-content]{position:static!important;inset:auto!important;top:auto!important;left:auto!important;translate:none!important;transform:none!important;scale:none!important;rotate:none!important;display:block!important;width:100%!important;min-width:0!important;max-width:none!important;height:auto!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:0!important;animation:none!important;contain:none!important}
+ [data-slot=dialog-content] [data-slot=table-container]{overflow:visible!important;width:100%!important;max-width:none!important}
+ [data-slot=dialog-content] table{width:100%!important;min-width:0!important;table-layout:fixed}
+ [data-slot=dialog-content] th,[data-slot=dialog-content] td{white-space:normal!important;overflow-wrap:anywhere;padding:6px!important;font-size:10px!important}
+ [data-slot=dialog-content] thead{display:table-header-group}
+ [data-slot=dialog-content] tr{break-inside:avoid}
+ .challan-pages{display:block!important;overflow:visible!important}
+ .challan-page{width:100%!important;max-width:none!important;padding:0!important;margin:0!important;border:0!important;break-inside:auto!important;break-after:page}
+ .challan-page:last-child{break-after:auto}
+ .challan-page .slip-brand{padding:0 0 4mm!important}
+ .challan-page .slip-brand h2{font-size:18px!important}
+ .challan-page .challan-meta{margin:4mm 0;font-size:11px;display:flex!important;flex-wrap:nowrap}
+ .challan-page .challan-title{padding:3mm 0}
+ .challan-page .challan-title h3{font-size:13px}
+ .challan-page .fee-slip-table th,.challan-page .fee-slip-table td{padding:2mm 1mm!important;font-size:8px!important}
+ .challan-page .fee-slip-table small{font-size:7px!important}
+ .challan-total{padding:3mm;margin-top:4mm;break-inside:avoid}
+ .challan-total strong{font-size:19px}
+ .challan-sign{margin-top:10mm;break-inside:avoid}
+ .challan-disclaimer{font-size:10px;margin-top:4mm}
+ .slip-totals{margin-top:4mm;break-inside:avoid}
+ .record-profile{break-inside:avoid}
+ .fee-options,.fee-generation-review{display:none!important}
+}
+
+@media print{body:has([data-slot=dialog-content]) [data-slot=sidebar-wrapper]{display:none!important}}

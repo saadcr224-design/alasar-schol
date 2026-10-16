@@ -1,4 +1,4 @@
-export type Student={id:string;name:string;roll:string;className:string;guardian:string;phone:string;fee:number;discount:number;active:boolean;familyId?:string;deletedAt?:string};
+export type Student={transportFee?:number;uniformFee?:number;booksFee?:number;examFee?:number;openingArrears?:number;lateFee?:number;id:string;name:string;roll:string;className:string;guardian:string;phone:string;fee:number;discount:number;active:boolean;familyId?:string;deletedAt?:string};
 export type Invoice={id:string;studentId:string;month:string;due:string;amount:number;label:string};
 export type Payment={id:string;invoiceId:string;amount:number;date:string;method:string;reference:string;voided?:boolean;groupId?:string;periodFrom?:string;periodTo?:string;familyId?:string;familyStudentIds?:string[]};
 export type Expense={id:string;title:string;category:string;amount:number;date:string};
@@ -14,7 +14,7 @@ const money=(v:any,zero=false)=>{const n=Number(v);if(!Number.isSafeInteger(n)||
 const date=(v:any)=>{if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(v)||isNaN(Date.parse(v))||new Date(v).toISOString().slice(0,10)!==v)throw Error('Choose a valid date.');return v};
 function mutateRecords(source:Ledger,action:string,p:any):Ledger{
  const s=structuredClone(source),id=crypto.randomUUID();let description='';
- if(action==='student') {const st:Student={id:p.id||id,name:text(p.name),roll:text(p.roll,40),className:text(p.className,40),guardian:text(p.guardian),phone:String(p.phone||'').slice(0,40),fee:money(p.fee,true),discount:money(p.discount||0,true),active:p.active!==false,familyId:String(p.familyId||'').trim().slice(0,80)};if(st.discount>st.fee)throw Error('Discount cannot exceed the monthly fee.');if(s.students.some(x=>x.roll===st.roll&&x.id!==st.id))throw Error('This admission number is already used.');if(p.id&&s.students.find(x=>x.id===p.id)?.deletedAt)throw Error('Restore this student before editing.');if(p.id&&!s.students.some(x=>x.id===p.id))throw Error('Student not found.');s.students=p.id?s.students.map(x=>x.id===p.id?st:x):[...s.students,st];description=`${p.id?'Updated':'Added'} student ${st.name}`;}
+ if(action==='student') {const st:Student={id:p.id||id,name:text(p.name),roll:text(p.roll,40),className:text(p.className,40),guardian:text(p.guardian),phone:String(p.phone||'').slice(0,40),fee:money(p.fee,true),discount:money(p.discount||0,true),active:p.active!==false,familyId:String(p.familyId||'').trim().slice(0,80),...admissionFees(p,s.students.find(x=>x.id===p.id))};if(st.discount>st.fee)throw Error('Discount cannot exceed the monthly fee.');if(s.students.some(x=>x.roll===st.roll&&x.id!==st.id))throw Error('This admission number is already used.');if(p.id&&s.students.find(x=>x.id===p.id)?.deletedAt)throw Error('Restore this student before editing.');if(p.id&&!s.students.some(x=>x.id===p.id))throw Error('Student not found.');s.students=p.id?s.students.map(x=>x.id===p.id?st:x):[...s.students,st];description=`${p.id?'Updated':'Added'} student ${st.name}`;}
  else if(action==='import_students'){
  if(!['All students','Individual student','Entire class','Sibling family'].includes(p.mode))throw Error('Choose an import type.');
  if(!Array.isArray(p.students)||p.students.length<1||p.students.length>500)throw Error('Import between 1 and 500 students at a time.');if(p.mode==='Individual student'&&p.students.length!==1)throw Error('Select exactly one student for individual import.');
@@ -27,9 +27,10 @@ function mutateRecords(source:Ledger,action:string,p:any):Ledger{
  else if(action==='delete_fee'){const invoice=s.invoices.find(i=>i.id===p.invoiceId);if(!invoice)throw Error('Fee not found or already deleted.');s.deletedFees=[...(s.deletedFees||[]),{invoice,deletedAt:new Date().toISOString()}];s.invoices=s.invoices.filter(i=>i.id!==invoice.id);s.deletedReminderIds=(s.deletedReminderIds||[]).filter(id=>id!==invoice.id);description=`Deleted fee ${invoice.label} for ${s.students.find(st=>st.id===invoice.studentId)?.name||'student'} (${invoice.month}), Rs ${invoice.amount}; remaining balance cancelled, receipts preserved`;}
  else if(action==='delete_reminder'||action==='restore_reminder'){const invoice=s.invoices.find(i=>i.id===p.invoiceId);if(!invoice)throw Error('Fee reminder not found.');const ids=new Set(s.deletedReminderIds||[]);if(action==='delete_reminder')ids.add(invoice.id);else ids.delete(invoice.id);s.deletedReminderIds=[...ids];description=`${action==='delete_reminder'?'Deleted':'Restored'} reminder for ${s.students.find(st=>st.id===invoice.studentId)?.name||'student'} (${invoice.month}); unpaid balance unchanged`;}
  else if(action==='generate'){
- const months=monthRange(p.month,p.endMonth||p.month),due=date(p.due),selected=selectStudents(s,p).filter(x=>x.active&&!x.deletedAt);let count=0;
- selected.forEach(x=>months.forEach(month=>{if(!s.invoices.some(i=>i.studentId===x.id&&i.month===month&&i.label==='Monthly tuition')){const plan=tuitionFor(s,x,month);const day=Math.min(Number(due.slice(8)),new Date(Number(month.slice(0,4)),Number(month.slice(5)),0).getDate());s.invoices.push({id:crypto.randomUUID(),studentId:x.id,month,due:month+'-'+String(day).padStart(2,'0'),amount:plan.fee-plan.discount,label:'Monthly tuition'});count++}}));
- if(!count)throw Error('No new fees to generate. Existing invoices can be printed from Fee challans.');description=`Generated ${count} tuition invoices for ${months.join(', ')}`;
+ const plan=feeGenerationPlan(s,p);
+ if(!plan.charges.length)throw Error('No new fees to generate. Existing invoices can be printed from Fee challans.');
+ s.invoices.push(...plan.charges.map(charge=>({...charge,id:crypto.randomUUID()})));
+ description=`Generated ${plan.charges.length} fee charges for ${plan.months.join(', ')}`;
  }
  else if(action==='tuition'){
  const st=s.students.find(x=>x.id===p.studentId);if(!st||st.deletedAt)throw Error('Choose a current student.');monthRange(p.month,p.month);const fee=money(p.fee,true),discount=money(p.discount||0,true);if(discount>fee)throw Error('Discount cannot exceed tuition.');
@@ -113,12 +114,71 @@ export function studentMonthlyRecords(s:Ledger,studentId:string,throughMonth=tod
  for(const invoice of invoices)byMonth.set(invoice.month,[...(byMonth.get(invoice.month)||[]),invoice]);
  const payments=new Map<string,number>();
  for(const payment of s.payments)if(!payment.voided)payments.set(payment.invoiceId,(payments.get(payment.invoiceId)||0)+payment.amount);
- const rows=[];let month=months[0],opening=0;
- while(month<=months[months.length-1]){
+ const rows=[];let month=academicYearMonths(months[0])[0],opening=0;
+ const lastMonth=academicYearMonths(months[months.length-1]).at(-1)!;
+ while(month<=lastMonth){
   const issued=byMonth.get(month)||[],billed=issued.reduce((n,i)=>n+i.amount,0),received=issued.reduce((n,i)=>n+(payments.get(i.id)||0),0),due=billed-received;
   rows.push({month,billed,paid:received,due,opening,totalDue:opening+due,issued:issued.length,status:!issued.length?'Not issued':due<=0?'Paid':received>0?'Partial':'Pending'});
   opening+=due;
   const year=Number(month.slice(0,4)),m=Number(month.slice(5));month=m===12?String(year+1).padStart(4,'0')+'-01':String(year).padStart(4,'0')+'-'+String(m+1).padStart(2,'0');
  }
  return rows.reverse();
+}
+
+export const admissionFeeFields=[
+ ['transportFee','Transport fee / month'],['uniformFee','Uniform'],['booksFee','Books'],
+ ['examFee','Exam fee'],['openingArrears','Opening arrears'],['lateFee','Late fee']
+] as const;
+function admissionFees(p:any,previous?:Student){
+ return Object.fromEntries(admissionFeeFields.map(([key])=>[key,money(p[key]??previous?.[key]??0,true)]));
+}
+export function addMonths(month:string,count:number){
+ monthRange(month,month);
+ if(!Number.isInteger(count)||count<0||count>24)throw Error('Choose a valid number of months.');
+ const index=Number(month.slice(0,4))*12+Number(month.slice(5))-1+count;
+ return String(Math.floor(index/12)).padStart(4,'0')+'-'+String(index%12+1).padStart(2,'0');
+}
+export function academicYearMonths(month:string){
+ monthRange(month,month);
+ const year=Number(month.slice(0,4))-(Number(month.slice(5))<4?1:0);
+ const start=String(year).padStart(4,'0')+'-04';
+ return monthRange(start,addMonths(start,11));
+}
+export function feeGenerationPlan(s:Ledger,p:any){
+ const months=monthRange(p.month,p.endMonth||p.month);
+ if(months.length>12)throw Error('Choose between 1 and 12 months for a fee slip.');
+ const due=date(p.due);
+ if(!['All students','Individual student','Entire class','Sibling family'].includes(p.scope))throw Error('Choose who to generate fees for.');
+ const students=selectStudents(s,p).filter(st=>st.active&&!st.deletedAt);
+ if(!students.length)throw Error('No active students in this selection.');
+ const charges:Omit<Invoice,'id'>[]=[];
+ for(const student of students)for(const month of months){
+  const tuition=tuitionFor(s,student,month);
+  const candidates:[string,number][]=[['Monthly tuition',tuition.fee-tuition.discount],['Transport',student.transportFee||0]];
+  if(month===months[0]){
+   if(p.includeUniform)candidates.push(['Uniform',student.uniformFee||0]);
+   if(p.includeBooks)candidates.push(['Books',student.booksFee||0]);
+   if(p.includeExam)candidates.push(['Exam fee',student.examFee||0]);
+   if(p.includeArrears&&!invoiceHistory(s).some(i=>i.studentId===student.id&&i.label==='Opening arrears'))candidates.push(['Opening arrears',student.openingArrears||0]);
+   if(p.includeLate)candidates.push(['Late fee',student.lateFee||0]);
+  }
+  const day=Math.min(Number(due.slice(8)),new Date(Number(month.slice(0,4)),Number(month.slice(5)),0).getDate());
+  for(const [label,amount] of candidates){
+   if(label!=='Monthly tuition'&&!amount)continue;
+   if(s.invoices.some(i=>i.studentId===student.id&&i.month===month&&i.label===label))continue;
+   charges.push({studentId:student.id,month,due:month+'-'+String(day).padStart(2,'0'),label,amount:money(amount,true)});
+  }
+ }
+ return {months,students,charges};
+}
+export const feeColumns=['Tuition','Transport','Uniform','Books','Exam / arrears','Late fee','Other'] as const;
+export function feeColumn(invoice:Invoice):typeof feeColumns[number]{
+ const label=invoice.label.toLowerCase();
+ if(label.includes('tuition'))return 'Tuition';
+ if(label.includes('transport'))return 'Transport';
+ if(label.includes('uniform'))return 'Uniform';
+ if(label.includes('book'))return 'Books';
+ if(label.includes('exam')||label.includes('arrear'))return 'Exam / arrears';
+ if(label.includes('late'))return 'Late fee';
+ return 'Other';
 }
