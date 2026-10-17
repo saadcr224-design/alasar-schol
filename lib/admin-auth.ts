@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:workers';
+import { env } from '@/lib/runtime';
 import { cookies } from 'next/headers';
 export const SESSION_COOKIE='__Host-school_admin';
 export function authDb(){const db=(env as any).DB;if(!db)throw Error('Account storage unavailable');return db;}

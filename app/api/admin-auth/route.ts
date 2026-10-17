@@ -1,9 +1,10 @@
+import {isSameOrigin} from '@/lib/request-origin';
 import {cookies} from 'next/headers';
 import {authDb,SESSION_COOKIE,passwordHash,equalHash,randomToken,tokenHash,ensureConfiguredAdmin,configuredUsername,resolveSchoolOwner} from '@/lib/admin-auth';
 export const dynamic='force-dynamic';
 const reply=(body:any,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store'}});
 export async function POST(req:Request){
- if(req.headers.get('origin')!==new URL(req.url).origin)return reply({error:'Request not allowed.'},403);
+ if(!isSameOrigin(req))return reply({error:'Request not allowed.'},403);
  try{
  const body:any=await req.json(),db=authDb(),jar=await cookies();
  if(!configuredUsername())return reply({error:'Admin sign-in is not configured.'},503);
