@@ -1,4 +1,4 @@
-export type Student={transportFee?:number;uniformFee?:number;booksFee?:number;examFee?:number;openingArrears?:number;lateFee?:number;id:string;name:string;roll:string;className:string;guardian:string;phone:string;fee:number;discount:number;active:boolean;familyId?:string;deletedAt?:string};
+export type Student={otherFee?:number;transportFee?:number;uniformFee?:number;booksFee?:number;examFee?:number;openingArrears?:number;lateFee?:number;id:string;name:string;roll:string;className:string;guardian:string;phone:string;fee:number;discount:number;active:boolean;familyId?:string;deletedAt?:string};
 export type Invoice={id:string;studentId:string;month:string;due:string;amount:number;label:string};
 export type Payment={id:string;invoiceId:string;amount:number;date:string;method:string;reference:string;voided?:boolean;groupId?:string;periodFrom?:string;periodTo?:string;familyId?:string;familyStudentIds?:string[]};
 export type Expense={id:string;title:string;category:string;amount:number;date:string};
@@ -126,8 +126,8 @@ export function studentMonthlyRecords(s:Ledger,studentId:string,throughMonth=tod
 }
 
 export const admissionFeeFields=[
- ['transportFee','Transport fee / month'],['uniformFee','Uniform'],['booksFee','Books'],
- ['examFee','Exam fee'],['openingArrears','Opening arrears'],['lateFee','Late fee']
+ ['transportFee','Transport fee / month'],['uniformFee','Uniform charges'],['booksFee','Books'],
+ ['examFee','Exam fee'],['openingArrears','Opening arrears'],['lateFee','Late fee'],['otherFee','Other charges']
 ] as const;
 function admissionFees(p:any,previous?:Student){
  return Object.fromEntries(admissionFeeFields.map(([key])=>[key,money(p[key]??previous?.[key]??0,true)]));
@@ -161,6 +161,7 @@ export function feeGenerationPlan(s:Ledger,p:any){
    if(p.includeExam)candidates.push(['Exam fee',student.examFee||0]);
    if(p.includeArrears&&!invoiceHistory(s).some(i=>i.studentId===student.id&&i.label==='Opening arrears'))candidates.push(['Opening arrears',student.openingArrears||0]);
    if(p.includeLate)candidates.push(['Late fee',student.lateFee||0]);
+   if(p.includeOther)candidates.push(['Other charges',student.otherFee||0]);
   }
   const day=Math.min(Number(due.slice(8)),new Date(Number(month.slice(0,4)),Number(month.slice(5)),0).getDate());
   for(const [label,amount] of candidates){
