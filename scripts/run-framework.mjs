@@ -4,6 +4,12 @@ import { readExecutionProfile } from "./execution-profile.mjs";
 
 const [command, ...args] = process.argv.slice(2);
 if (!["dev", "build"].includes(command)) throw new Error("Expected dev or build.");
+if (process.env.VERCEL === "1") {
+  const cli = fileURLToPath(new URL("../node_modules/next/dist/bin/next", import.meta.url));
+  const result = spawnSync(process.execPath, [cli, command, "--webpack", ...args], { stdio: "inherit" });
+  if (result.error) throw result.error;
+  process.exit(result.status ?? 1);
+}
 const managedLinux = readExecutionProfile() === "managed-linux";
 
 if (managedLinux && command === "build") {
