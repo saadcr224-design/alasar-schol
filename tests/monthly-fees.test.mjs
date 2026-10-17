@@ -63,3 +63,21 @@ test('Class and sibling previews include only the selected active students and p
  assert.equal(feeGenerationPlan(s,{...p,scope:'Sibling family',familyId:'F1'}).students.length,1);
  assert.equal(feeGenerationPlan(s,{...p,scope:'All students'}).charges.length,4);
 });
+
+test('Other admission charges are optional, validated and billed once in the selected range',()=>{
+ let s=fixture();const id=s.students[0].id;
+ s=mutate(s,'student',{...s.students[0],otherFee:750});
+ assert.equal(s.students[0].otherFee,750);
+ s=mutate(s,'student',{id,name:'Updated',roll:'TEST-1',className:'Class 1',guardian:'Parent',fee:5000,discount:500});
+ assert.equal(s.students[0].otherFee,750);
+ const p={scope:'Individual student',studentId:id,month:'2026-04',endMonth:'2026-06',due:'2026-04-10'};
+ assert.ok(!feeGenerationPlan(s,p).charges.some(i=>i.label==='Other charges'));
+ const plan=feeGenerationPlan(s,{...p,includeOther:true});
+ assert.deepEqual(plan.charges.filter(i=>i.label==='Other charges'),[{studentId:id,month:'2026-04',due:'2026-04-10',label:'Other charges',amount:750}]);
+ s=mutate(s,'generate',{...p,includeOther:true});
+ assert.equal(feeGenerationPlan(s,{...p,includeOther:true}).charges.length,0);
+ assert.throws(()=>mutate(s,'student',{...s.students[0],otherFee:-1}),/valid amount/);
+ assert.throws(()=>mutate(s,'student',{...s.students[0],otherFee:1.5}),/valid amount/);
+ s=mutate(s,'student',{...s.students[0],otherFee:''});
+ assert.equal(s.students[0].otherFee,0);
+});
